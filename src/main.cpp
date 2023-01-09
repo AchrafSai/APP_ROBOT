@@ -9,13 +9,11 @@ int Counter = 0;
 int Stop = 0;
 int autoThread;
 
-
 float SpeedValueWifi = 0;
 float AngleValueWifi = 0;
 // specifing arrays and variables to store values
 void read_me(), read_rc();
 Timer t2, t3;
-
 
 static UnbufferedSerial ESP32(p28, p27);
 int countt = 0;
@@ -29,15 +27,9 @@ char ssid[32] = "ESP8266"; // WiFi router ssid inside the quotes
 char pwd[32] = "123456789"; // WiFi router password inside the quotes
 char ch[1];
 
-
 EventQueue queue(32 * EVENTS_EVENT_SIZE);
 EventQueue queue1(32 * EVENTS_EVENT_SIZE);
 EventQueue queue2(32 * EVENTS_EVENT_SIZE);
-
-
-
-
-
 
 char buffer[10];
 int readingIndex = 0;
@@ -57,25 +49,20 @@ float Phi = 0.0f;
 float DLL = 0;
 float DRR = 0;
 
-
-
 float xGoal = 0.0f;
 float yGoal = 0.0f;
 
 float xObstacle = 0.0f;
-float yObstacle = 0.0f; 
+float yObstacle = 0.0f;
 
 float kObstacle = 0.0f;
 float kGoal = 0.5f;
 
 float dGoal = 0.0f;
-float dObstacle =  0.0f;
+float dObstacle = 0.0f;
 
 float vObstacle[2];
 float vGoal[2];
-
-
-
 
 #define R 0.127f
 #define L 0.385f
@@ -109,7 +96,6 @@ InterruptIn HallSensor_W1(p5);
 PwmOut pwm(p21);
 PwmOut pwm1(p23);
 
-
 typedef struct {
 
     /* Controller gains */
@@ -126,8 +112,7 @@ typedef struct {
 
     /* Integrator limits */
     float limMinInt;
-    float limMaxInt;        
-
+    float limMaxInt;
 
     /* Sample time (in seconds) */
     float T;
@@ -143,10 +128,8 @@ typedef struct {
 
 } PIDController;
 
-
-void ESPconfig(), SendCMD(), clearBuffer(), clear_static_Buffer(), ClearSnd(), resetVariables(),
-    readWifiData(),sendData(),updateRobot(),manualMode(),autoMode(),RFmode();
-
+void ESPconfig(), SendCMD(), clearBuffer(), clear_static_Buffer(), ClearSnd(), resetVariables(), readWifiData(),
+    sendData(), updateRobot(), manualMode(), autoMode(), RFmode();
 
 float PIDController_Update(PIDController* pid, float setpoint, float measurement)
 {
@@ -233,8 +216,6 @@ void read_me()
     }
 } // copy store all values from temporary array another array after 15 reading
 
-
-
 void on_rx_interrupt()
 {
     if (countt == 99) {
@@ -255,15 +236,13 @@ void on_rx_interrupt()
             clear_static_Buffer();
             strcpy(static_buf, buf);
             clearBuffer();
-            if(strlen(static_buf)!= 0){
+            if (strlen(static_buf) != 0) {
                 queue.call(&readWifiData);
             }
         }
     }
     led = 0;
 }
-
-
 
 #define CW 1 // Assign a value to represent clock wise rotation
 #define CCW -1 // Assaign a value to represent counter-clock wise rotation
@@ -476,13 +455,11 @@ void HallSensorW1()
 #define PID_LIM_MIN_INT1 -1.0f
 #define PID_LIM_MAX_INT1 1.0f
 
-
-PIDController pid = { PID_KP, PID_KI, PID_KD, PID_TAU, PID_LIM_MIN, PID_LIM_MAX, PID_LIM_MIN_INT, PID_LIM_MAX_INT,
-        SAMPLE_TIME_S };
+PIDController pid
+    = { PID_KP, PID_KI, PID_KD, PID_TAU, PID_LIM_MIN, PID_LIM_MAX, PID_LIM_MIN_INT, PID_LIM_MAX_INT, SAMPLE_TIME_S };
 
 PIDController pid1 = { PID_KP1, PID_KI1, PID_KD1, PID_TAU1, PID_LIM_MIN1, PID_LIM_MAX1, PID_LIM_MIN_INT1,
-        PID_LIM_MAX_INT1, SAMPLE_TIME_S1 };
-   
+    PID_LIM_MAX_INT1, SAMPLE_TIME_S1 };
 
 int main()
 {
@@ -499,7 +476,6 @@ int main()
     HSW1.mode(PullDown);
 
     RC.rise(&read_me);
-
 
     PIDController_Init(&pid);
     PIDController_Init(&pid1);
@@ -528,11 +504,10 @@ int main()
 
     pwm1.period(0.0009f); // 4 second period
     pwm1.write(0.0f);
-    
 
     Thread eventThread(osPriorityAboveNormal2, 1500);
     Thread eventThread1(osPriorityAboveNormal1, 1500);
-    
+
     ESP32.baud(115200);
     ESP32.format(
         /* bits */ 8,
@@ -541,105 +516,96 @@ int main()
     ESP32.attach(&on_rx_interrupt, SerialBase::RxIrq);
     ESPconfig();
     eventThread1.start(callback(&queue1, &EventQueue::dispatch_forever));
-    queue1.call_every(200ms,&sendData);
+    queue1.call_every(200ms, &sendData);
     eventThread.start(callback(&queue, &EventQueue::dispatch_forever));
-    queue.call_every(1ms,&updateRobot);
+    queue.call_every(1ms, &updateRobot);
     clear_static_Buffer();
     wait_us(osWaitForever);
 }
 
 void updateRobot()
 {
-        // put your main code here, to run repeatedly:
-        led2=0;    
-        if ((t.read_ms() - prevTime) > 700) {
-            RPM = 0;
-        }
-        if ((t1.read_ms() - prevTime1) > 700) {
+    // put your main code here, to run repeatedly:
+    led2 = 0;
+    if ((t.read_ms() - prevTime) > 700) {
+        RPM = 0;
+    }
+    if ((t1.read_ms() - prevTime1) > 700) {
 
-            RPM1 = 0;
-        }
+        RPM1 = 0;
+    }
 
-        if (RPM > 500) {
-            RPM = 0;
-        }
-        if (RPM1 > 500) {
-            RPM1 = 0;
-        }
+    if (RPM > 500) {
+        RPM = 0;
+    }
+    if (RPM1 > 500) {
+        RPM1 = 0;
+    }
 
-        Dl = (2*3.14159*R)*(Lwheeld/90);
-        Dr = (2*3.14159*R)*(Rwheeld/90);
-        DLL = DLL+  Lwheeld;
-        DRR = DRR + Rwheeld;
-        Rwheeld = 0.0f;
-        Lwheeld = 0.0f;
-        Dc =(Dl + Dr)/2;
-        Phi = Phi + (Dr - Dl)/L;
-        Xpos = Xpos + Dc*cos(Phi);
-        Ypos = Ypos + Dl*sin(Phi);
-        float average = 0.0f;
-        for (int i = 0; i < 10; i++) {
-            average = average + RPM;
-        }
-        average = average / 10.0f;
+    Dl = (2 * 3.14159 * R) * (Lwheeld / 90);
+    Dr = (2 * 3.14159 * R) * (Rwheeld / 90);
+    DLL = DLL + Lwheeld;
+    DRR = DRR + Rwheeld;
+    Rwheeld = 0.0f;
+    Lwheeld = 0.0f;
+    Dc = (Dl + Dr) / 2;
+    Phi = Phi + (Dr - Dl) / L;
+    Xpos = Xpos + Dc * cos(Phi);
+    Ypos = Ypos + Dl * sin(Phi);
+    float average = 0.0f;
+    for (int i = 0; i < 10; i++) {
+        average = average + RPM;
+    }
+    average = average / 10.0f;
 
-        float average1 = 0.0f;
-        for (int i = 0; i < 10; i++) {
-            average1 = average1 + RPM1;
-        }
-        average1 = average1 / 10.0f;
-        read_rc();
-        
-        if (Vl > 0.0f) {
-            PIDController_Update(&pid, Vl, RPM);
-            pwm1.write(pid.out);
-            dir = 0;
+    float average1 = 0.0f;
+    for (int i = 0; i < 10; i++) {
+        average1 = average1 + RPM1;
+    }
+    average1 = average1 / 10.0f;
+    read_rc();
 
-        } else if (Vl < 0.0f) {
-            PIDController_Update(&pid, -Vl, RPM);
-            pwm1.write(pid.out);
-            dir = 1;
-        } else {
+    if (Vl > 0.0f) {
+        PIDController_Update(&pid, Vl, RPM);
+        pwm1.write(pid.out);
+        dir = 0;
 
-            pwm1.write(0.0f);
-            PIDController_Init(&pid);
-        }
-        if (Vr > 0.0f) {
-            PIDController_Update(&pid1, Vr, RPM1);
-            pwm.write(pid1.out);
-            dir1 = 1;
+    } else if (Vl < 0.0f) {
+        PIDController_Update(&pid, -Vl, RPM);
+        pwm1.write(pid.out);
+        dir = 1;
+    } else {
 
-        } else if (Vr < 0.0f) {
-            PIDController_Update(&pid1, -Vr, RPM1);
-            pwm.write(pid1.out);
-            dir1 = 0;
-        } else {
+        pwm1.write(0.0f);
+        PIDController_Init(&pid);
+    }
+    if (Vr > 0.0f) {
+        PIDController_Update(&pid1, Vr, RPM1);
+        pwm.write(pid1.out);
+        dir1 = 1;
 
-            pwm.write(0.0f);
-            PIDController_Init(&pid1);
-        }
+    } else if (Vr < 0.0f) {
+        PIDController_Update(&pid1, -Vr, RPM1);
+        pwm.write(pid1.out);
+        dir1 = 0;
+    } else {
 
-        
+        pwm.write(0.0f);
+        PIDController_Init(&pid1);
+    }
 
-
-
-        /*printf(
-            "Vr: %f, Vl 1: %f, SpeedValue : %f, Speed 1: %f RPM, Speed 2: %f pidout: %f \r\n",
-            Vr, Vl, Speed, average, average1, pid.out);*/
-        led2=1;    
-
-        
-              
-    
+    /*printf(
+        "Vr: %f, Vl 1: %f, SpeedValue : %f, Speed 1: %f RPM, Speed 2: %f pidout: %f \r\n",
+        Vr, Vl, Speed, average, average1, pid.out);*/
+    led2 = 1;
 }
-
 
 void sendData()
 {
-        sprintf(Status, "{\"Xpos\":%f,\"Ypos\":%f,\"Phi\":%f}\r\n", Xpos, Ypos, Phi);
-        ESP32.write(Status, strlen(Status));
-        resetVariables();
-        led4=!led4;    
+    sprintf(Status, "{\"Xpos\":%f,\"Ypos\":%f,\"Phi\":%f}\r\n", Xpos, Ypos, Phi);
+    ESP32.write(Status, strlen(Status));
+    resetVariables();
+    led4 = !led4;
 }
 
 void manualMode()
@@ -652,85 +618,75 @@ void manualMode()
         Vl = -((2 * Speed + Angle * L) / (2 * R)) * 60 / (2 * 3.14);
         Vr = -((2 * Speed - Angle * L) / (2 * R)) * 60 / (2 * 3.14);
     }
-
+    ²
 }
 void autoMode()
 {
-    
 
-        vGoal[0] = xGoal - Xpos;
-        vGoal[1] = yGoal - Ypos;
-        vObstacle[0] = xObstacle - Xpos;
-        vObstacle[1] = yObstacle - Ypos;
-        
+    vGoal[0] = xGoal - Xpos;
+    vGoal[1] = yGoal - Ypos;
+    vObstacle[0] = xObstacle - Xpos;
+    vObstacle[1] = yObstacle - Ypos;
 
-        dGoal = sqrt( pow(vGoal[0],2) + pow(vGoal[1],2));
-        dObstacle = sqrt(pow(vObstacle[0],2) +pow(vObstacle[1],2));
-        if(dObstacle < 1)
-        {
-            Speed = kGoal*sqrt(pow(vGoal[0]-kObstacle*vObstacle[0],2) +pow(vGoal[1]-kObstacle*vObstacle[1],2));
-            Angle = atan2((vGoal[1]-kObstacle*vObstacle[1]),(vGoal[1]-kObstacle*vObstacle[1]));
-        }else{
-            Speed = kGoal*sqrt(pow(vGoal[0],2) + pow(vGoal[1],2));
-            Angle = atan2((vGoal[1]),(vGoal[0]));
-        }
-        if(Speed > .3f){
-            Speed = .3f;
-        }
-        Vl = ((2 * Speed + Angle * L) / (2.0 * R)) * 60.0 / (2.0 * 3.14);
-        Vr = ((2 * Speed - Angle * L) / (2.0 * R)) * 60.0 / (2.0 * 3.14);
-        if (Vr * Vl < 0) {
-            Vl = -((2 * Speed + Angle * L) / (2 * R)) * 60 / (2 * 3.14);
-            Vr = -((2 * Speed - Angle * L) / (2 * R)) * 60 / (2 * 3.14);
-        }
-        if(dGoal < 1.5) {
-            Vl = 0.0f;
-            Vr = 0.0f;
-            queue.cancel(autoThread);
-        }
+    dGoal = sqrt(pow(vGoal[0], 2) + pow(vGoal[1], 2));
+    dObstacle = sqrt(pow(vObstacle[0], 2) + pow(vObstacle[1], 2));
+    if (dObstacle < 1) {
+        Speed = kGoal * sqrt(pow(vGoal[0] - kObstacle * vObstacle[0], 2) + pow(vGoal[1] - kObstacle * vObstacle[1], 2));
+        Angle = atan2((vGoal[1] - kObstacle * vObstacle[1]), (vGoal[1] - kObstacle * vObstacle[1]));
+    } else {
+        Speed = kGoal * sqrt(pow(vGoal[0], 2) + pow(vGoal[1], 2));
+        Angle = atan2((vGoal[1]), (vGoal[0]));
+    }
+    if (Speed > .3f) {
+        Speed = .3f;
+    }
+    Vl = ((2 * Speed + Angle * L) / (2.0 * R)) * 60.0 / (2.0 * 3.14);
+    Vr = ((2 * Speed - Angle * L) / (2.0 * R)) * 60.0 / (2.0 * 3.14);
+    if (Vr * Vl < 0) {
+        Vl = -((2 * Speed + Angle * L) / (2 * R)) * 60 / (2 * 3.14);
+        Vr = -((2 * Speed - Angle * L) / (2 * R)) * 60 / (2 * 3.14);
+    }
+    if (dGoal < 1.5) {
+        Vl = 0.0f;
+        Vr = 0.0f;
+        queue.cancel(autoThread);
+    }
 
-    printf("\n Auto X: %f Y: %f dObstacle: %f, dGoal:%f, Speed %f, Angle %f \n",Xpos,Ypos,dObstacle,dGoal,Speed,Angle);
-
-    
-
+    printf("\n Auto X: %f Y: %f dObstacle: %f, dGoal:%f, Speed %f, Angle %f \n", Xpos, Ypos, dObstacle, dGoal, Speed,
+        Angle);
 }
-
 
 void readWifiData()
 {
     int len = strlen(static_buf);
     led3 = !led3;
-    //printf("\n static Buf : %s \n",static_buf);
-    if (sscanf(static_buf, "%[m]%[:]\"%[0-9]\"%[,]%[a]%[:]\"%[0-9]\"", a,
-            b,c,f,e,f) && len != 0) {
+    // printf("\n static Buf : %s \n",static_buf);
+    if (sscanf(static_buf, "%[m]%[:]\"%[0-9]\"%[,]%[a]%[:]\"%[0-9]\"", a, b, c, f, e, f) && len != 0) {
 
         queue.cancel(autoThread);
         Vl = 0;
-        Vr = 0;/*
-        SpeedValueWifi = (atoi(a)-50.0f)/50.0f;
-        AngleValueWifi = (atoi(b)-50.0f)/50.0f;
-        Speed = SpeedValueWifi * .5f;
-        Angle = AngleValueWifi * .65f;
-        Vl = ((2 * Speed + Angle * L) / (2.0 * R)) * 60.0 / (2.0 * 3.14);
-        Vr = ((2 * Speed - Angle * L) / (2.0 * R)) * 60.0 / (2.0 * 3.14);
-        if (Vr * Vl < 0) {
-            Vl = -((2 * Speed + Angle * L) / (2 * R)) * 60 / (2 * 3.14);
-            Vr = -((2 * Speed - Angle * L) / (2 * R)) * 60 / (2 * 3.14);
-        }*/
-        //queue.call(&manualMode);
+        Vr = 0; /*
+         SpeedValueWifi = (atoi(a)-50.0f)/50.0f;
+         AngleValueWifi = (atoi(b)-50.0f)/50.0f;
+         Speed = SpeedValueWifi * .5f;
+         Angle = AngleValueWifi * .65f;
+         Vl = ((2 * Speed + Angle * L) / (2.0 * R)) * 60.0 / (2.0 * 3.14);
+         Vr = ((2 * Speed - Angle * L) / (2.0 * R)) * 60.0 / (2.0 * 3.14);
+         if (Vr * Vl < 0) {
+             Vl = -((2 * Speed + Angle * L) / (2 * R)) * 60 / (2 * 3.14);
+             Vr = -((2 * Speed - Angle * L) / (2 * R)) * 60 / (2 * 3.14);
+         }*/
+        // queue.call(&manualMode);
         clear_static_Buffer();
-            }
-        else if(sscanf(static_buf, "X:\"%f\",Y:\"%f\",Xobs:\"%f\",Yobs:\"%f\"", &xGoal,
-            &yGoal, &xObstacle, &yObstacle) && len != 0){
-                /*xGoal = atof(a);
-                yGoal = atof(b);
-                xObstacle = atof(c);
-                yObstacle = atof(d);*/
-                printf("\n Recieved Xgoal: %f, Ygoal: %f, Xobs: %f, Yobs:%f \n",xGoal, yGoal,xObstacle, yObstacle);
-                autoThread = queue.call_every(100ms,&autoMode);
-
-            }
-    
+    } else if (sscanf(static_buf, "X:\"%f\",Y:\"%f\",Xobs:\"%f\",Yobs:\"%f\"", &xGoal, &yGoal, &xObstacle, &yObstacle)
+        && len != 0) {
+        /*xGoal = atof(a);
+        yGoal = atof(b);
+        xObstacle = atof(c);
+        yObstacle = atof(d);*/
+        printf("\n Recieved Xgoal: %f, Ygoal: %f, Xobs: %f, Yobs:%f \n", xGoal, yGoal, xObstacle, yObstacle);
+        autoThread = queue.call_every(100ms, &autoMode);
+    }
 }
 void ESPconfig()
 {
