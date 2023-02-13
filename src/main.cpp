@@ -1,3 +1,4 @@
+#include <math.h>
 #include <mbed.h>
 
 Timer t, t1;
@@ -8,7 +9,13 @@ int xx[20], ch1[20], chh[8];
 int Counter = 0;
 int Stop = 0;
 int autoThread;
+int manuThread;
+int rfThread;
+float prevTimeRF;
 
+double robotArrived = 0;
+
+float AngleNormalized = 0;
 float SpeedValueWifi = 0;
 float AngleValueWifi = 0;
 // specifing arrays and variables to store values
@@ -18,14 +25,16 @@ Timer t2, t3;
 static UnbufferedSerial ESP32(p28, p27);
 int countt = 0;
 int bufflen, DataRx;
-char buf[100];
-char static_buf[100];
-char Status[100];
-char snd[100];
+char buf[300];
+char static_buf[300];
+char Status[300];
+char snd[300];
 char a[2], b[2], c[2], d[2], e[2], f[2], g[2], h[2], i[2], j[2], k[2], l[2], m[2], n[2], o[2];
 char ssid[32] = "ESP8266"; // WiFi router ssid inside the quotes
 char pwd[32] = "123456789"; // WiFi router password inside the quotes
 char ch[1];
+int parameterOrder;
+float parameterValue = 0.0f;
 
 EventQueue queue(32 * EVENTS_EVENT_SIZE);
 EventQueue queue1(32 * EVENTS_EVENT_SIZE);
@@ -55,14 +64,40 @@ float yGoal = 0.0f;
 float xObstacle = 0.0f;
 float yObstacle = 0.0f;
 
-float kObstacle = 0.0f;
+float xObstacle1 = 0.0f;
+float yObstacle1 = 0.0f;
+
+float minDistanceObs = 0.0f;
+float vObstacleMin[2];
+
+float xObstacle2 = 0.0f;
+float yObstacle2 = 0.0f;
+
+float kObstacle = 0.2f;
 float kGoal = 0.5f;
 
+float Obstacles[3];
+float vObstacles;
+
 float dGoal = 0.0f;
+float dGoalMax = 0.2f;
 float dObstacle = 0.0f;
+float dObstacle1 = 0.0f;
+float dObstacleMax = 1.0f;
 
 float vObstacle[2];
+float vObstacle1[2];
+float vObstacle2[2];
 float vGoal[2];
+
+float kAngle = 0.35f;
+
+float directionAngle = 0.0f;
+
+float SpeedAngle = 0.0f;
+
+float vMax = 0.4f;
+float vOMax = 0.7f;
 
 #define R 0.127f
 #define L 0.385f
@@ -129,7 +164,15 @@ typedef struct {
 } PIDController;
 
 void ESPconfig(), SendCMD(), clearBuffer(), clear_static_Buffer(), ClearSnd(), resetVariables(), readWifiData(),
-    sendData(), updateRobot(), manualMode(), autoMode(), RFmode();
+    sendData(), updateRobot(), manualMode(), autoMode(), RFmode(), resetOdometryValues();
+
+float constrainAngle(float AngleNonNormalized)
+{
+    AngleNonNormalized = fmod(AngleNonNormalized + 3.14, 2 * 3.14);
+    if (AngleNonNormalized < 0)
+        AngleNonNormalized += 2 * 3.14;
+    return AngleNonNormalized - 3.14;
+}
 
 float PIDController_Update(PIDController* pid, float setpoint, float measurement)
 {
@@ -214,6 +257,8 @@ void read_me()
         }
         ii = 0;
     }
+    prevTimeRF = t.read_ms();
+
 } // copy store all values from temporary array another array after 15 reading
 
 void on_rx_interrupt()
@@ -293,6 +338,8 @@ float HSW_Val1 = HSW1.read(); // Set the W sensor value as boolean and read init
 
 float Rwheeld = 0.0f;
 float Lwheeld = 0.0f;
+
+double normalizedAngle = 0;
 
 /////////////////////
 
@@ -505,7 +552,7 @@ int main()
     pwm1.period(0.0009f); // 4 second period
     pwm1.write(0.0f);
 
-    Thread eventThread(osPriorityAboveNormal2, 1500);
+    Thread eventThread(osPriorityAboveNormal1, 1500);
     Thread eventThread1(osPriorityAboveNormal1, 1500);
 
     ESP32.baud(115200);
@@ -518,7 +565,7 @@ int main()
     eventThread1.start(callback(&queue1, &EventQueue::dispatch_forever));
     queue1.call_every(200ms, &sendData);
     eventThread.start(callback(&queue, &EventQueue::dispatch_forever));
-    queue.call_every(1ms, &updateRobot);
+    queue.call_every(100ms, &updateRobot);
     clear_static_Buffer();
     wait_us(osWaitForever);
 }
@@ -526,7 +573,7 @@ int main()
 void updateRobot()
 {
     // put your main code here, to run repeatedly:
-    led2 = 0;
+    led2 = 1;
     if ((t.read_ms() - prevTime) > 700) {
         RPM = 0;
     }
@@ -563,7 +610,6 @@ void updateRobot()
         average1 = average1 + RPM1;
     }
     average1 = average1 / 10.0f;
-    read_rc();
 
     if (Vl > 0.0f) {
         PIDController_Update(&pid, Vl, RPM);
@@ -593,52 +639,57 @@ void updateRobot()
         pwm.write(0.0f);
         PIDController_Init(&pid1);
     }
+    normalizedAngle = constrainAngle(Phi);
 
-    /*printf(
-        "Vr: %f, Vl 1: %f, SpeedValue : %f, Speed 1: %f RPM, Speed 2: %f pidout: %f \r\n",
-        Vr, Vl, Speed, average, average1, pid.out);*/
-    led2 = 1;
+    led2 = 0;
 }
 
 void sendData()
 {
-    sprintf(Status, "{\"Xpos\":%f,\"Ypos\":%f,\"Phi\":%f}\r\n", Xpos, Ypos, Phi);
+    sprintf(Status,
+        "{\"Xpos\":%f,\"Ypos\":%f,\"Phi\":%f,\"Speed input\":%f,\"Angle\":%f ,\"robotArrived\":%lf, \"Xgoal\":%f, "
+        "\"Ygoal\":%f, \"dGoal\":%f,\"dObstacle\":%f,\"dObstacle1\":%f}\r\n",
+        Xpos, Ypos, normalizedAngle, Speed, Angle, robotArrived, xGoal, yGoal, dGoal, dObstacle, dObstacle1);
     ESP32.write(Status, strlen(Status));
     resetVariables();
     led4 = !led4;
 }
 
-void manualMode()
-{
-    Speed = SpeedValueWifi * .5f;
-    Angle = AngleValueWifi * .65f;
-    Vl = ((2 * Speed + Angle * L) / (2.0 * R)) * 60.0 / (2.0 * 3.14);
-    Vr = ((2 * Speed - Angle * L) / (2.0 * R)) * 60.0 / (2.0 * 3.14);
-    if (Vr * Vl < 0) {
-        Vl = -((2 * Speed + Angle * L) / (2 * R)) * 60 / (2 * 3.14);
-        Vr = -((2 * Speed - Angle * L) / (2 * R)) * 60 / (2 * 3.14);
-    }
-    ²
-}
 void autoMode()
 {
+    robotArrived = 0;
 
     vGoal[0] = xGoal - Xpos;
     vGoal[1] = yGoal - Ypos;
     vObstacle[0] = xObstacle - Xpos;
     vObstacle[1] = yObstacle - Ypos;
 
+    vObstacle1[0] = xObstacle1 - Xpos;
+    vObstacle1[1] = yObstacle1 - Ypos;
+
     dGoal = sqrt(pow(vGoal[0], 2) + pow(vGoal[1], 2));
     dObstacle = sqrt(pow(vObstacle[0], 2) + pow(vObstacle[1], 2));
-    if (dObstacle < 1) {
+    dObstacle1 = sqrt(pow(vObstacle1[0], 2) + pow(vObstacle1[1], 2));
+
+    if (dObstacle < dObstacleMax) {
         Speed = kGoal * sqrt(pow(vGoal[0] - kObstacle * vObstacle[0], 2) + pow(vGoal[1] - kObstacle * vObstacle[1], 2));
-        Angle = atan2((vGoal[1] - kObstacle * vObstacle[1]), (vGoal[1] - kObstacle * vObstacle[1]));
+        directionAngle = atan2((vGoal[1] - kObstacle * vObstacle[1]), (vGoal[1] - kObstacle * vObstacle[1]));
+    } else if (dObstacle1 < dObstacleMax) {
+        Speed
+            = kGoal * sqrt(pow(vGoal[0] - kObstacle * vObstacle1[0], 2) + pow(vGoal[1] - kObstacle * vObstacle1[1], 2));
+        directionAngle = atan2((vGoal[1] - kObstacle * vObstacle1[1]), (vGoal[1] - kObstacle * vObstacle1[1]));
     } else {
         Speed = kGoal * sqrt(pow(vGoal[0], 2) + pow(vGoal[1], 2));
-        Angle = atan2((vGoal[1]), (vGoal[0]));
+        directionAngle = atan2((vGoal[1]), (vGoal[0]));
     }
-    if (Speed > .3f) {
-        Speed = .3f;
+    directionAngle = directionAngle + 3.14;
+    normalizedAngle = normalizedAngle + 3.14;
+
+    SpeedAngle = constrainAngle(normalizedAngle - directionAngle);
+    Angle = SpeedAngle * kAngle;
+
+    if (Speed > vMax) {
+        Speed = vMax;
     }
     Vl = ((2 * Speed + Angle * L) / (2.0 * R)) * 60.0 / (2.0 * 3.14);
     Vr = ((2 * Speed - Angle * L) / (2.0 * R)) * 60.0 / (2.0 * 3.14);
@@ -646,78 +697,146 @@ void autoMode()
         Vl = -((2 * Speed + Angle * L) / (2 * R)) * 60 / (2 * 3.14);
         Vr = -((2 * Speed - Angle * L) / (2 * R)) * 60 / (2 * 3.14);
     }
-    if (dGoal < 1.5) {
+    if (dGoal < dGoalMax) {
+        robotArrived = 1;
         Vl = 0.0f;
         Vr = 0.0f;
-        queue.cancel(autoThread);
+        queue1.cancel(autoThread);
+    }
+}
+
+void RFmode()
+{
+    read_rc();
+    if (chh[1] > 1600) {
+        RecieverValueCh2 = (float(chh[1]) - 1500.0f) / 500.0f;
+
+    } else if (chh[1] < 1400) {
+        RecieverValueCh2 = -(1 - (float(chh[1]) - 1000.0f) / 500.0f);
+
+    } else {
+        RecieverValueCh2 = 0.0f;
     }
 
-    printf("\n Auto X: %f Y: %f dObstacle: %f, dGoal:%f, Speed %f, Angle %f \n", Xpos, Ypos, dObstacle, dGoal, Speed,
-        Angle);
+    if (chh[0] > 1500) {
+        RecieverValueCh1 = ((float(chh[0]) - 900.0f) / 1000.0f - 0.5) * 2.0 - 0.1;
+
+    } else if (chh[0] < 1400) {
+        RecieverValueCh1 = -(0.6 - (float(chh[0]) - 900.0f) / 1000.0f) * 2.0;
+
+    } else {
+        RecieverValueCh1 = 0.0f;
+    }
+
+    Speed = -RecieverValueCh2 * vMax;
+    Angle = RecieverValueCh1 * vOMax;
+    Vl = ((2 * Speed + Angle * L) / (2 * R)) * 60 / (2 * 3.14);
+    Vr = ((2 * Speed - Angle * L) / (2 * R)) * 60 / (2 * 3.14);
+    if (Vr * Vl < 0) {
+        Vl = -((2 * Speed + Angle * L) / (2 * R)) * 60 / (2 * 3.14);
+        Vr = -((2 * Speed - Angle * L) / (2 * R)) * 60 / (2 * 3.14);
+    }
 }
 
 void readWifiData()
 {
     int len = strlen(static_buf);
-    led3 = !led3;
-    // printf("\n static Buf : %s \n",static_buf);
-    if (sscanf(static_buf, "%[m]%[:]\"%[0-9]\"%[,]%[a]%[:]\"%[0-9]\"", a, b, c, f, e, f) && len != 0) {
+    led3 = 1;
 
-        queue.cancel(autoThread);
-        Vl = 0;
-        Vr = 0; /*
-         SpeedValueWifi = (atoi(a)-50.0f)/50.0f;
-         AngleValueWifi = (atoi(b)-50.0f)/50.0f;
-         Speed = SpeedValueWifi * .5f;
-         Angle = AngleValueWifi * .65f;
-         Vl = ((2 * Speed + Angle * L) / (2.0 * R)) * 60.0 / (2.0 * 3.14);
-         Vr = ((2 * Speed - Angle * L) / (2.0 * R)) * 60.0 / (2.0 * 3.14);
-         if (Vr * Vl < 0) {
-             Vl = -((2 * Speed + Angle * L) / (2 * R)) * 60 / (2 * 3.14);
-             Vr = -((2 * Speed - Angle * L) / (2 * R)) * 60 / (2 * 3.14);
-         }*/
-        // queue.call(&manualMode);
-        clear_static_Buffer();
-    } else if (sscanf(static_buf, "X:\"%f\",Y:\"%f\",Xobs:\"%f\",Yobs:\"%f\"", &xGoal, &yGoal, &xObstacle, &yObstacle)
+    if (sscanf(static_buf, "mode:manual,m:%f,a:%f", &SpeedValueWifi, &AngleValueWifi) && len != 0) {
+
+        queue1.cancel(autoThread);
+        queue1.cancel(rfThread);
+        Speed = ((SpeedValueWifi - 50.0f) / 50.0f) * vMax;
+        Angle = ((AngleValueWifi - 50.0f) / 50.0f) * vOMax;
+        Vl = ((2 * Speed + Angle * L) / (2.0 * R)) * 60.0 / (2.0 * 3.14);
+        Vr = ((2 * Speed - Angle * L) / (2.0 * R)) * 60.0 / (2.0 * 3.14);
+        if (Vr * Vl < 0) {
+            Vl = -((2 * Speed + Angle * L) / (2 * R)) * 60 / (2 * 3.14);
+            Vr = -((2 * Speed - Angle * L) / (2 * R)) * 60 / (2 * 3.14);
+        }
+    } else if (sscanf(static_buf, "mode:auto,X:\"%f\",Y:\"%f\",Xobs:\"%f\",Yobs:\"%f\",Xobs2:\"%f\",Ybos2:\"%f\"",
+                   &xGoal, &yGoal, &xObstacle, &yObstacle, &xObstacle1, &yObstacle1)
         && len != 0) {
-        /*xGoal = atof(a);
-        yGoal = atof(b);
-        xObstacle = atof(c);
-        yObstacle = atof(d);*/
-        printf("\n Recieved Xgoal: %f, Ygoal: %f, Xobs: %f, Yobs:%f \n", xGoal, yGoal, xObstacle, yObstacle);
-        autoThread = queue.call_every(100ms, &autoMode);
+        queue1.cancel(rfThread);
+        autoThread = queue1.call_every(100ms, &autoMode);
+    } else if (sscanf(static_buf, "update,\"%d\":\"%f\"", &parameterOrder, &parameterValue) && len != 0) {
+        switch (parameterOrder) {
+        case 0:
+            kGoal = parameterValue;
+            printf("\n Kgoal Updated \n");
+            break;
+        case 1:
+            kObstacle = parameterValue;
+            printf("\n kObstacle Updated \n");
+            break;
+        case 2:
+            kAngle = parameterValue;
+            printf("\n kAngle Updated \n");
+            break;
+        case 3:
+            dGoalMax = parameterValue;
+            printf("\n dGoal Updated \n");
+            break;
+        case 4:
+            dObstacleMax = parameterValue;
+            printf("\n dObs Updated \n");
+            break;
+        case 5:
+            vMax = parameterValue;
+            printf("\n vMax Updated \n");
+            break;
+        case 6:
+            vOMax = parameterValue;
+            printf("\n vOMax Updated \n");
+            break;
+        }
+    } else if (strcmp(static_buf, "resetPos") == 0) {
+        resetOdometryValues();
+
+    } else if (strcmp(static_buf, "rfMode") == 0) {
+        queue1.cancel(autoThread);
+        rfThread = queue1.call_every(100ms, &RFmode);
+
+    } else if (strcmp(static_buf, "urgentStop") == 0) {
+        queue1.cancel(rfThread);
+        queue1.cancel(autoThread);
+        Vl = 0;
+        Vr = 0;
     }
+    clear_static_Buffer();
+    led3 = 0;
 }
 void ESPconfig()
 {
     strcpy(snd, "+++");
     clearBuffer();
     SendCMD();
-    wait_us(3000000);
+    wait_us(2000000);
     ClearSnd();
     strcpy(snd, "AT\r\n");
     clearBuffer();
     SendCMD();
 
-    wait_us(3000000);
+    wait_us(2000000);
     ClearSnd();
     strcpy(snd, "AT+RST\r\n");
     clearBuffer();
     SendCMD();
 
     ClearSnd();
-    wait_us(3000000);
+    wait_us(2000000);
 
     strcpy(snd, "AT+GMR\r\n");
     clearBuffer();
     SendCMD();
     ClearSnd();
-    wait_us(5000000);
+    wait_us(2000000);
     strcpy(snd, "AT+CWMODE=2\r\n");
     clearBuffer();
     SendCMD();
     ClearSnd();
-    wait_us(3000000);
+    wait_us(2000000);
 
     strcpy(snd, "AT+CWSAP=\"");
     strcat(snd, ssid);
@@ -727,27 +846,25 @@ void ESPconfig()
     clearBuffer();
     SendCMD();
     ClearSnd();
-    wait_us(3000000);
-    printf("%s \r\n", buf);
+    wait_us(2000000);
 
     strcpy(snd, "AT+CIPSTART=\"UDP\",\"192.168.4.2\",4444,5555\r\n");
     clearBuffer();
     SendCMD();
     ClearSnd();
-    wait_us(3000000);
+    wait_us(2000000);
 
     strcpy(snd, "AT+CIPMODE=1\r\n");
     clearBuffer();
     SendCMD();
     ClearSnd();
-    wait_us(3000000);
+    wait_us(2000000);
 
     strcpy(snd, "AT+CIPSEND\r\n");
     clearBuffer();
     SendCMD();
     ClearSnd();
-    wait_us(3000000);
-    printf("%s \r\n", buf);
+    wait_us(2000000);
 
     clearBuffer();
     clear_static_Buffer();
@@ -779,6 +896,21 @@ void resetVariables()
     memset(n, '\0', sizeof(n));
     memset(o, '\0', sizeof(o));
     memset(Status, '\0', sizeof(Status));
+}
+void resetOdometryValues()
+{
+    robotArrived = 0;
+    Angle = 0.0f;
+    Speed = 0.0f;
+    Xpos = 0.0f;
+    Ypos = 0.0f;
+    Phi = 0.0f;
+    xGoal = 0.0f;
+    yGoal = 0.0f;
+    dGoal = 0.0f;
+    dObstacle1 = 0.0f;
+    dObstacle = 0.0f;
+    normalizedAngle = 0.0f;
 }
 void read_rc()
 {
