@@ -1,3 +1,3 @@
 # APP_ROBOT
 
-Mechincal part of mobile robot platofrm, differential robot
+NXP LPC1768 based on the arm MBED framework for mobile robot platform 
